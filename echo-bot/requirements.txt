@@ -1,0 +1,1 @@
+PyTelegramBotAPI==4.12.0  # зависимость для работы с Telegram API через Telebot
