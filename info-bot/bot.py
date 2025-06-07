@@ -1,12 +1,12 @@
-import os  # импорт модуля для работы с переменными окружения
-import telebot  # импорт библиотеки для работы с Telegram Bot API
+import os
+import telebot
+from telebot import types
 
 # Получаем токен бота из переменной окружения INFO_BOT_TOKEN
-TOKEN = ""
+TOKEN = os.environ.get('INFO_BOT_TOKEN')
 if not TOKEN:
     raise Exception("Не найден токен для info bot!")
 
-# Инициализируем бота
 bot = telebot.TeleBot(TOKEN)
 
 # Простая база данных с информацией о городах и странах
@@ -19,7 +19,7 @@ info_data = {
     },
     "Париж": {
         "тип": "город",
-        "год основания": 300,  # приблизительно
+        "год основания": 300,
         "количество улиц": 6000,
         "районы": 20,
     },
@@ -31,7 +31,7 @@ info_data = {
     },
     "Франция": {
         "тип": "страна",
-        "год основания": 843,  # по Верденскому договору
+        "год основания": 843,
         "количество городов": 36000,
         "площадь": "551 тыс км²",
     }
@@ -39,22 +39,49 @@ info_data = {
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # Приветствие пользователя и инструкция по использованию бота
-    bot.reply_to(message, "Привет! Отправь название города или страны, чтобы получить подробную информацию.")
+    # Приветствие и инструкция по использованию бота
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for name in info_data.keys():
+        markup.add(types.KeyboardButton(name))
+    markup.add(types.KeyboardButton('Добавить свою информацию'))
+    bot.send_message(
+        message.chat.id,
+        "Привет! Выбери город или страну из меню, чтобы получить подробную информацию, или добавь свою.",
+        reply_markup=markup
+    )
 
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda m: m.text == 'Добавить свою информацию')
+def ask_for_custom_info(message):
+    """
+    Запрашивает у пользователя название и описание для новой записи.
+    """
+    msg = bot.send_message(message.chat.id, 'Введи название города или страны:')
+    bot.register_next_step_handler(msg, get_custom_name)
+
+def get_custom_name(message):
+    name = message.text.strip()
+    msg = bot.send_message(message.chat.id, f'Введи описание или факты о "{name}":')
+    bot.register_next_step_handler(msg, lambda m: save_custom_info(m, name))
+
+def save_custom_info(message, name):
+    """
+    Сохраняет пользовательскую информацию в базу info_data.
+    """
+    info_data[name] = {'описание': message.text.strip()}
+    bot.reply_to(message, f'Информация о "{name}" добавлена!')
+
+@bot.message_handler(func=lambda m: m.text in info_data)
 def send_info(message):
-    query = message.text.strip()
-    # Ищем информацию о переданном значении
-    details = info_data.get(query)
-    if details:
-        response = f"Информация о {query}:\n"
-        for key, value in details.items():
-            response += f"{key}: {value}\n"
-        bot.reply_to(message, response)
+    """
+    Отправляет подробную информацию о выбранном городе или стране.
+    """
+    details = info_data[message.text]
+    if 'описание' in details:
+        text = f'{message.text}: {details["описание"]}'
     else:
-        bot.reply_to(message, f"Информация о {query} не найдена. Попробуйте другой запрос.")
+        text = f'{message.text}:\n' + '\n'.join([f'{k}: {v}' for k, v in details.items()])
+    bot.reply_to(message, text)
 
 if __name__ == '__main__':
-    # Запускаем бота в режиме polling для обработки входящих сообщений
+    # Запуск бота в режиме polling
     bot.polling()
